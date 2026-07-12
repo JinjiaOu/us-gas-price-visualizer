@@ -28,7 +28,7 @@ the frontend degrades to a cached real-data snapshot.
 - **Three-level drill-down**: national map → state view with county-level
   choropleth (AAA, independent-city aware name matching) and a metro price
   panel with day-over-day deltas
-- **Two data providers, honestly blended**: AAA (daily, all 50 states,
+- **The two data providers merged together**: AAA (daily, all 50 states,
   scraped) powers "now"; EIA (weekly, official API) powers 3.5 years of
   history. The API responds with `provider` and `source` fields so the UI can
   label regional fallbacks instead of passing them off as state data
