@@ -9,6 +9,16 @@ online, the backend runs on demand on my own machine** and is exposed through a
 Cloudflare Tunnel only when a live demo is needed. When the backend is offline,
 the frontend degrades gracefully to a cached real-data snapshot.
 
+## Screenshots
+
+![US Gas Price Visualizer dashboard in dark mode](docs/screenshots/dark_mode.jpg)
+
+![County-level state drill-down with tooltip](docs/screenshots/state-drilldown.jpg)
+
+![Multi-state trend comparison](docs/screenshots/trend-comparison.jpg)
+
+![Light mode dashboard](docs/screenshots/dashboard.jpg)
+
 ## Features
 
 - **Interactive US choropleth** (Magma-derived color scale, color-blind safe)
