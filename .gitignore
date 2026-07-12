@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+backend/venv/
+
+# secrets — NEVER commit
+backend/.env
+
+# local data
+backend/gas_prices.db
+backend/probe_out/
+
+# build & cache
+dist/
+backend/__pycache__/
+*.pyc
+
+# editor / os
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,319 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap");
+
+:root {
+  --bg: #0a0910;
+  --panel: #12111a;
+  --panel-2: #181724;
+  --text: #ece9e2;
+  --text-dim: #8d8a99;
+  --text-faint: #565364;
+  --border: #232030;
+  --border-strong: #363245;
+  /* magma 截断版 低->高 */
+  --heat-0: #3b2d8f;
+  --heat-1: #6b2fa8;
+  --heat-2: #a83289;
+  --heat-3: #e04c67;
+  --heat-4: #ff6d38;
+  --hi-color: #ff6d38;
+  --lo-color: #8a7fd6;
+  --up: #ff7a6b;
+  --down: #43d17c;
+  --tip-bg: #1d1b2a;
+  --grid-dot: rgba(255, 255, 255, 0.045);
+  --glow: rgba(255, 109, 56, 0.4);
+  --cmp-1: #4aa3df;
+  --cmp-2: #b58ae0;
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --panel-2: #faf9f6;
+  --text: #1c1a24;
+  --text-dim: #5f5c6c;
+  --text-faint: #9c99a8;
+  --border: #e5e3dd;
+  --border-strong: #d1cfc8;
+  --heat-0: #c9b8e8;
+  --heat-1: #9d7ac9;
+  --heat-2: #b73779;
+  --heat-3: #e8541f;
+  --heat-4: #7a1600;
+  --hi-color: #cf3d10;
+  --lo-color: #6a5bc4;
+  --up: #c73a2a;
+  --down: #1d8f56;
+  --tip-bg: #ffffff;
+  --grid-dot: rgba(0, 0, 0, 0.05);
+  --glow: rgba(207, 61, 16, 0.25);
+  --cmp-1: #2478b5;
+  --cmp-2: #7e56bd;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", -apple-system, system-ui, "PingFang SC", sans-serif;
+  transition: background .35s ease, color .35s ease;
+}
+.mono { font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+
+.app { max-width: 1320px; margin: 0 auto; padding: 32px 24px 64px; }
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px; flex-wrap: wrap; gap: 12px;
+}
+.title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.subtitle { font-size: 13px; color: var(--text-dim); margin-top: 3px; }
+.cursor {
+  display: inline-block; width: 7px; height: 14px; margin-left: 6px;
+  background: var(--heat-3); vertical-align: -2px;
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.toggle {
+  background: var(--panel); border: 0.5px solid var(--border-strong);
+  color: var(--text-dim); font-size: 13px; padding: 8px 16px;
+  border-radius: 8px; cursor: pointer; transition: all .2s;
+}
+.toggle:hover { color: var(--text); border-color: var(--text-faint); }
+
+/* ---------- 状态提示 ---------- */
+.banner {
+  background: rgba(224, 76, 103, 0.08);
+  border: 0.5px solid rgba(224, 76, 103, 0.35);
+  color: var(--text-dim);
+  border-radius: 10px; padding: 10px 14px;
+  font-size: 12.5px; margin-bottom: 16px;
+  animation: rise .4s ease both;
+}
+.live-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #43d17c; margin-left: 8px; vertical-align: 1px;
+  box-shadow: 0 0 6px rgba(67, 209, 124, 0.7);
+  animation: pulse 2s ease infinite;
+}
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* ---------- 油品切换 pills ---------- */
+.pills { display: inline-flex; gap: 4px; background: var(--panel);
+  border: 0.5px solid var(--border); border-radius: 10px; padding: 4px; }
+.pill {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 12.5px; padding: 6px 14px; border-radius: 7px;
+  cursor: pointer; transition: all .22s ease;
+}
+.pill:hover:not(:disabled) { color: var(--text); }
+.pill.on {
+  background: var(--panel-2); color: var(--text);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+}
+.pill:disabled { opacity: 0.4; cursor: not-allowed; }
+.controls-row {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
+}
+
+/* ---------- 指标卡 ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 16px; }
+.card {
+  background: var(--panel); border: 0.5px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+  animation: rise .5s ease both;
+  transition: transform .25s ease, border-color .25s ease;
+}
+.card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+.card:nth-child(2) { animation-delay: .06s; }
+.card:nth-child(3) { animation-delay: .12s; }
+.card:nth-child(4) { animation-delay: .18s; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+.card .label { font-size: 12px; color: var(--text-dim); }
+.card .value { font-size: 24px; font-weight: 600; margin-top: 4px;
+  font-variant-numeric: tabular-nums; }
+.delta { font-size: 12px; margin-left: 8px; font-weight: 600;
+  animation: slide-in .4s ease both; }
+.delta.up { color: var(--up); }
+.delta.down { color: var(--down); }
+@keyframes slide-in { from { opacity: 0; transform: translateX(-4px); } }
+
+/* ---------- dashboard 主区 ---------- */
+.main-grid {
+  display: grid; grid-template-columns: minmax(0, 2.9fr) minmax(230px, 1fr);
+  gap: 14px; align-items: start;
+}
+@media (max-width: 860px) { .main-grid { grid-template-columns: 1fr; } }
+
+.map-wrap {
+  position: relative; background: var(--panel);
+  border: 0.5px solid var(--border); border-radius: 14px; padding: 10px;
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  animation: rise .5s ease .08s both;
+}
+.map-wrap svg { display: block; }
+
+/* 州块入场:依次点亮(通过内联 animationDelay 错开) */
+.state {
+  transition: filter .18s ease, opacity .35s ease, transform .24s cubic-bezier(.2,.8,.2,1);
+  outline: none;
+  animation: state-in .5s ease both;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform-style: preserve-3d;
+  will-change: transform, filter;
+}
+@keyframes state-in { from { opacity: 0; } }
+/* JS owns the map tilt transform; hover only handles visual emphasis. */
+.state:hover {
+  filter: brightness(1.18) drop-shadow(0 3px 7px var(--glow));
+  cursor: pointer;
+}
+.state.hover-base {
+  filter: brightness(0.9);
+}
+.state-hover-overlay {
+  pointer-events: none;
+  animation: none;                 /* 不重播入场淡入 */
+  transition: filter .18s ease;    /* transform 全权交给 JS 循环,避免双重平滑 */
+  transform-box: view-box;         /* 不依赖 fill-box 的 3D 支持(Chrome 合成层下不可靠) */
+  transform-origin: 0 0;           /* 原点固定,旋转中心由 JS 的共轭平移精确控制 */
+  filter:
+    brightness(1.24)
+    drop-shadow(var(--state-shadow-x, 0px) var(--state-shadow-y, 5px) 8px var(--glow));
+}
+.state.selected { filter: brightness(1.1) drop-shadow(0 0 8px var(--glow)); }
+/* 州视图:飞入选中州,其余州几乎隐去,像切换到州地图 */
+.map-stateview .state:not(.selected) { opacity: 0.07; }
+.map-stateview .state:not(.selected):hover {
+  opacity: 0.45;
+}
+.map-stateview .state.selected:hover { filter: brightness(1.1) drop-shadow(0 0 8px var(--glow)); }
+
+/* 县级图层 */
+.county {
+  outline: none;
+  animation: state-in .45s ease both;
+  transition: filter .15s ease;
+}
+.county:hover { filter: brightness(1.22) drop-shadow(0 0 4px var(--glow)); }
+
+/* 返回按钮悬浮于地图左上 */
+.map-back {
+  position: absolute; top: 16px; left: 16px; z-index: 5;
+  background: var(--panel-2); border: 0.5px solid var(--border-strong);
+  color: var(--text-dim); font-size: 12.5px; padding: 7px 14px;
+  border-radius: 8px; cursor: pointer;
+  animation: rise .35s ease both;
+  transition: color .2s, border-color .2s;
+}
+.map-back:hover { color: var(--text); border-color: var(--text-faint); }
+
+/* 城市标记 */
+.city-marker { cursor: pointer; animation: chip-in .45s ease both; }
+.city-dot { fill: var(--text); }
+.city-ring {
+  fill: none; stroke: var(--text); stroke-width: 0.4; opacity: 0.55;
+  animation: city-pulse 2.2s ease infinite;
+  transform-box: fill-box; transform-origin: center;
+}
+@keyframes city-pulse {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  70% { transform: scale(1.5); opacity: 0; }
+  100% { opacity: 0; }
+}
+.city-label {
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--bg); stroke-width: 3px;
+  font-weight: 600;
+}
+
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 50;
+  background: var(--tip-bg); border: 0.5px solid var(--border-strong);
+  border-radius: 8px; padding: 7px 11px; font-size: 13px;
+  white-space: nowrap; box-shadow: 0 4px 20px rgba(0,0,0,.3);
+}
+.legend { display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+.legend .ramp { flex: 1; height: 8px; border-radius: 4px; }
+
+/* ---------- 侧栏 ---------- */
+.side { display: flex; flex-direction: column; gap: 14px; }
+.panel-box {
+  background: var(--panel); border: 0.5px solid var(--border);
+  border-radius: 14px; padding: 14px 16px;
+  animation: rise .5s ease .14s both;
+}
+.panel-box h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px;
+  color: var(--text-dim); letter-spacing: .02em; }
+.rank-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px; margin: 0 -8px; border-radius: 8px;
+  font-size: 13px; cursor: pointer; transition: background .18s ease;
+}
+.rank-row:hover { background: var(--panel-2); }
+.rank-row.on { background: var(--panel-2);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong); }
+.rank-row .rn { color: var(--text-faint); width: 18px; font-size: 11px; }
+.rank-row .st { flex: 1; }
+.rank-row .pr { font-variant-numeric: tabular-nums; }
+.rank-row .dl { width: 58px; text-align: right; font-size: 11.5px; font-weight: 600; }
+.rank-row .dl.up { color: var(--up); }
+.rank-row .dl.down { color: var(--down); }
+.rank-row .dl.na { color: var(--text-faint); }
+
+.metro-list { max-height: 240px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; }
+
+/* 选中州信息卡 */
+.info-card .big { font-size: 28px; font-weight: 600; margin: 2px 0 4px;
+  font-variant-numeric: tabular-nums; }
+.info-card .meta { font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+.info-empty { font-size: 12.5px; color: var(--text-faint); padding: 6px 0 2px; }
+
+/* ---------- 趋势区 ---------- */
+.trend {
+  margin-top: 14px; background: var(--panel);
+  border: 0.5px solid var(--border); border-radius: 14px;
+  padding: 16px 16px 8px;
+  animation: rise .5s ease .2s both;
+}
+.trend-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-wrap: wrap; gap: 10px;
+}
+.trend-title { font-size: 14px; font-weight: 600; }
+.trend-sub { font-size: 12px; color: var(--text-dim); }
+.trend-clear {
+  background: none; border: none; color: var(--text-faint);
+  font-size: 12px; cursor: pointer; padding: 2px 6px;
+}
+.trend-clear:hover { color: var(--text); }
+.trend-empty {
+  color: var(--text-faint); font-size: 13px;
+  padding: 60px 0 70px; text-align: center;
+}
+
+/* 对比 chips */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 4px 10px; border-radius: 100px;
+  background: var(--panel-2); border: 0.5px solid var(--border-strong);
+  animation: chip-in .3s ease both;
+}
+@keyframes chip-in { from { opacity: 0; transform: scale(.85); } }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.chip button {
+  background: none; border: none; color: var(--text-faint);
+  cursor: pointer; font-size: 12px; padding: 0;
+}
+.chip button:hover { color: var(--text); }
+.cmp-hint { font-size: 11.5px; color: var(--text-faint); }
