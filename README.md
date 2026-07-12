@@ -4,10 +4,10 @@ Full-stack, self-hosted dashboard for US gasoline prices — an interactive
 choropleth map with **state → metro → county** drill-down, week/day deltas,
 multi-state trend comparison, and a dark "data terminal" aesthetic.
 
-Built with a deliberately unusual deployment model: **the frontend is always
+Built with a simple deployment model: **the frontend is always
 online, the backend runs on demand on my own machine** and is exposed through a
 Cloudflare Tunnel only when a live demo is needed. When the backend is offline,
-the frontend degrades gracefully to a cached real-data snapshot.
+the frontend degrades to a cached real-data snapshot.
 
 ## Screenshots
 
