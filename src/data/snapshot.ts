@@ -1,6 +1,6 @@
-// 离线降级快照:后端不在线时展示的缓存数据.
-// 这是 2026-07-06 当周的真实 EIA 数据.
-// 更新方法:后端在线时访问 /api/prices/latest,把响应粘贴到这里.
+// Offline fallback snapshot shown when the backend is unavailable.
+// This is real EIA data for the week of 2026-07-06.
+// To update it, run the backend, fetch /api/prices/latest, and paste the response here.
 import type { LatestResponse } from "../api";
 
 export const snapshot: LatestResponse = {

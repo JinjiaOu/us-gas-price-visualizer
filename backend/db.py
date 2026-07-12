@@ -1,4 +1,4 @@
-"""SQLite 存储层:油价历史数据囤在本地单文件数据库."""
+"""SQLite storage layer for local single-file gas price history."""
 import sqlite3
 from pathlib import Path
 
@@ -16,8 +16,8 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS prices (
-                period    TEXT NOT NULL,   -- '2026-07-07' 周
-                duoarea   TEXT NOT NULL,   -- EIA 区域码: NUS / SCA / R20 ...
+                period    TEXT NOT NULL,   -- Week, such as '2026-07-07'
+                duoarea   TEXT NOT NULL,   -- EIA area code: NUS / SCA / R20 ...
                 area_name TEXT NOT NULL,
                 product   TEXT NOT NULL,   -- EPMR = regular gasoline
                 value     REAL NOT NULL,   -- $/gal
@@ -31,8 +31,8 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS aaa_prices (
-                date    TEXT NOT NULL,   -- '2026-07-10' 日
-                abbr    TEXT NOT NULL,   -- 州缩写, 'US' 为全国
+                date    TEXT NOT NULL,   -- Day, such as '2026-07-10'
+                abbr    TEXT NOT NULL,   -- State abbreviation; 'US' is national
                 product TEXT NOT NULL,
                 value   REAL NOT NULL,
                 PRIMARY KEY (date, abbr, product)
@@ -43,8 +43,8 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS aaa_metros (
                 date    TEXT NOT NULL,
-                abbr    TEXT NOT NULL,   -- 所属州缩写
-                metro   TEXT NOT NULL,   -- 都市区名, 如 'Houston'
+                abbr    TEXT NOT NULL,   -- Owning state abbreviation
+                metro   TEXT NOT NULL,   -- Metro area name, such as 'Houston'
                 product TEXT NOT NULL,
                 value   REAL NOT NULL,
                 PRIMARY KEY (date, abbr, metro, product)
@@ -57,7 +57,7 @@ def init_db() -> None:
                 date   TEXT NOT NULL,
                 abbr   TEXT NOT NULL,
                 county TEXT NOT NULL,
-                value  REAL NOT NULL,   -- 仅 regular
+                value  REAL NOT NULL,   -- Regular only
                 PRIMARY KEY (date, abbr, county)
             )
             """
@@ -73,7 +73,7 @@ def init_db() -> None:
 
 
 def upsert_rows(rows: list[dict]) -> int:
-    """插入或更新价格行,返回受影响行数."""
+    """Insert or update price rows and return the affected row count."""
     with connect() as conn:
         conn.executemany(
             """

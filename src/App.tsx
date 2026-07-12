@@ -17,7 +17,7 @@ import "./theme.css";
 const geoUrl = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const countiesUrl = "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json";
 
-// 州缩写 -> FIPS 前缀(county topojson 的 id 前两位)
+// State abbreviation -> FIPS prefix (first two digits of county topojson ids).
 const STATE_FIPS: Record<string, string> = {
   AL:"01",AK:"02",AZ:"04",AR:"05",CA:"06",CO:"08",CT:"09",DE:"10",FL:"12",
   GA:"13",HI:"15",ID:"16",IL:"17",IN:"18",IA:"19",KS:"20",KY:"21",LA:"22",
@@ -27,9 +27,10 @@ const STATE_FIPS: Record<string, string> = {
   VA:"51",WA:"53",WV:"54",WI:"55",WY:"56",
 };
 
-// 县名归一化:忽略大小写/标点/County、Parish 等后缀,匹配 AAA 与 topojson。
-// 注意不删 "city"——弗吉尼亚等州同时存在 Fairfax County 与 Fairfax City,
-// 独立市匹配交给 countyPriceFor 的 FIPS 启发式处理。
+// Normalize county names for AAA/topojson matching by ignoring case,
+// punctuation, and suffixes such as County and Parish.
+// Keep "city" because states such as Virginia can have both Fairfax County
+// and Fairfax City; independent-city matching is handled by countyPriceFor.
 function normCounty(name: string): string {
   return name
     .toLowerCase()
@@ -38,9 +39,10 @@ function normCounty(name: string): string {
     .replace(/[^a-z]/g, "");
 }
 
-// 县代码 >= 500 通常是独立市(VA 的 Alexandria/Virginia Beach、MD 的
-// Baltimore City、MO 的 St. Louis City 等):优先按 "X city" 匹配 AAA 名;
-// 普通县则优先裸名。两个方向都兜底,避免 Fairfax County / Fairfax City 撞名。
+// County codes >= 500 are usually independent cities (for example Alexandria
+// and Virginia Beach in VA, Baltimore City in MD, St. Louis City in MO).
+// Prefer "X city" for those and the bare name for normal counties, with both
+// directions as fallbacks to avoid Fairfax County / Fairfax City collisions.
 function countyPriceFor(
   m: Map<string, number>, geoId: string, cname: string
 ): number | undefined {
@@ -57,7 +59,8 @@ function countyPriceFor(
 
 type Theme = "dark" | "light";
 type Mode = "loading" | "live" | "offline";
-// 像素空间镜头(SVG viewBox 920x540 坐标系),对 AK/HI 嵌入框天然安全
+// Pixel-space camera in the 920x540 SVG viewBox coordinate system; naturally
+// safe for the AK/HI inset boxes in the AlbersUSA projection.
 type View = { cx: number; cy: number; zoom: number };
 type HoveredState = {
   geo: any;
@@ -148,7 +151,7 @@ function useCountUp(target: number, duration = 700): number {
   return v;
 }
 
-/** 平滑镜头:目标视图变化时用 rAF 插值飞过去 */
+/** Smooth camera: interpolate to target views with rAF. */
 function useAnimatedView(target: View, duration = 650): View {
   const [v, setV] = useState(target);
   const currentRef = useRef(target);
@@ -178,12 +181,23 @@ function useAnimatedView(target: View, duration = 650): View {
 }
 
 function viewForBBox(b: { x: number; y: number; width: number; height: number }): View {
-  // 州填满视口约 72%,缩放限制在 [1.6, 9]
+  // Make the state fill about 72% of the viewport; clamp zoom to [1.6, 9].
   const zoom = Math.min(
     9,
     Math.max(1.6, 0.72 * Math.min(MAP_W / b.width, MAP_H / b.height))
   );
   return { cx: b.x + b.width / 2, cy: b.y + b.height / 2, zoom };
+}
+
+function pointerToSvgPoint(el: SVGGraphicsElement, e: React.MouseEvent) {
+  const svg = el.ownerSVGElement;
+  if (!svg) return null;
+  const ctm = el.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  return pt.matrixTransform(ctm.inverse());
 }
 
 function Delta({ d }: { d: number | null | undefined }) {
@@ -297,7 +311,8 @@ export default function App() {
     })();
   }, [mode, product, range, selected, compare]);
 
-  // 选中州变化:拉该州 metro 均价(仅在线;首次会触发后端现场抓取)
+  // When the selected state changes, load metro averages for that state.
+  // Online only; first access can trigger a backend fetch.
   useEffect(() => {
     setMetros([]);
     if (mode !== "live" || !selected) return;
@@ -308,7 +323,8 @@ export default function App() {
     return () => { cancelled = true; };
   }, [mode, selected, product]);
 
-  // 选中州变化:拉县级数据(仅在线且 regular——AAA 县级地图只有 regular)
+  // When the selected state changes, load county data.
+  // Online only and regular only because AAA county maps only publish regular.
   useEffect(() => {
     setCounties([]);
     if (mode !== "live" || !selected || product !== "EPMR") return;
@@ -319,13 +335,14 @@ export default function App() {
     return () => { cancelled = true; };
   }, [mode, selected, product]);
 
-  // 滚轮缩放:朝鼠标位置缩放;州视图缩小过阈值自动退回全国
+  // Wheel zoom: zoom toward the pointer; zooming out far enough from state view
+  // returns to the national map.
   useEffect(() => {
     const el = mapWrapRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      untiltState(); // 缩放时收起悬浮克隆,避免 tilt 与缩放变换叠加
+      untiltState(); // Hide the hover clone while zooming to avoid stacked transforms.
       const svg = el.querySelector("svg");
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
@@ -339,12 +356,12 @@ export default function App() {
         setTargetView(US_VIEW);
         return;
       }
-      // 保持鼠标下的地图点不动
+      // Keep the map point under the pointer fixed.
       const wx = v.cx + (sx - MAP_W / 2) / v.zoom;
       const wy = v.cy + (sy - MAP_H / 2) / v.zoom;
       let cx2 = wx - (sx - MAP_W / 2) / z2;
       let cy2 = wy - (sy - MAP_H / 2) / z2;
-      // 视口不出界
+      // Keep the viewport within map bounds.
       const hw = MAP_W / (2 * z2), hh = MAP_H / (2 * z2);
       cx2 = Math.min(MAP_W - hw, Math.max(hw, cx2));
       cy2 = Math.min(MAP_H - hh, Math.max(hh, cy2));
@@ -355,7 +372,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Esc 返回全国
+  // Escape returns to the national map.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") backToUS();
@@ -378,8 +395,10 @@ export default function App() {
   }
 
   /** 3D tilt: derive lift and angle from pointer position inside each state.
-   * mousemove 只更新目标;独立的 rAF 循环持续把当前值收敛到目标——
-   * 鼠标停住也能平滑到位,避免入场半途卡顿. */
+   * mousemove only updates the target; a separate rAF loop keeps easing the
+   * current value toward it. This keeps motion smooth even after the pointer
+   * stops and avoids mid-entry stalls.
+   */
   function tiltState(e: React.MouseEvent, hovered: HoveredState) {
     const el = e.currentTarget as SVGPathElement;
     if (inStateView) {
@@ -388,19 +407,21 @@ export default function App() {
     }
 
     setHoveredState(hovered);
-    const box = el.getBoundingClientRect();
-    if (!box.width || !box.height) return;
-
-    const nx = Math.max(-1, Math.min(1, ((e.clientX - box.left) / box.width) * 2 - 1));
-    const ny = Math.max(-1, Math.min(1, ((e.clientY - box.top) / box.height) * 2 - 1));
-    // 旋转中心 = 该州 path 的几何中心(SVG 用户坐标,getBBox 不受祖先变换影响)
     const bb = el.getBBox();
-    tiltPivotRef.current = { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 };
+    if (!bb.width || !bb.height) return;
+
+    const pivot = { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 };
+    const localPoint = pointerToSvgPoint(el, e);
+    if (!localPoint) return;
+
+    const nx = Math.max(-1, Math.min(1, (localPoint.x - pivot.x) / (bb.width / 2)));
+    const ny = Math.max(-1, Math.min(1, (localPoint.y - pivot.y) / (bb.height / 2)));
+    tiltPivotRef.current = pivot;
     tiltTargetRef.current = {
       rx: -ny * 15,
       ry: nx * 15,
       tx: 0,
-      ty: -9 + ny * 1.8,
+      ty: -9,
     };
     if (tiltRafRef.current == null) tiltLoop();
   }
@@ -418,11 +439,13 @@ export default function App() {
       tiltStateRef.current = next;
       const p = tiltPivotRef.current;
       setHoverTilt({
-        // translate(pivot) -> 倾斜 -> translate(-pivot):
-        // 旋转/缩放/透视全部精确绕州中心,不依赖浏览器 transform-box 支持
+        // translate(pivot) -> tilt -> translate(-pivot):
+        // Rotate, scale, and perspective around the state center without
+        // relying on browser transform-box support.
         transform:
+          `translate(${next.tx.toFixed(2)}px, ${next.ty.toFixed(2)}px) ` +
           `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) ` +
-          `perspective(760px) translate3d(${next.tx.toFixed(2)}px, ${next.ty.toFixed(2)}px, 30px) ` +
+          `perspective(760px) ` +
           `rotateX(${next.rx.toFixed(2)}deg) rotateY(${next.ry.toFixed(2)}deg) scale(1.024) ` +
           `translate(${(-p.x).toFixed(1)}px, ${(-p.y).toFixed(1)}px)`,
         shadowX: `${(-next.ry / 5).toFixed(2)}px`,

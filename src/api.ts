@@ -1,4 +1,5 @@
-// 后端 API 层。后端地址可通过 VITE_API_URL 覆盖(部署时指向隧道 URL)
+// Backend API layer. Override the backend URL with VITE_API_URL, such as a
+// tunnel URL during deployment.
 export type Product = "EPMR" | "EPMM" | "EPMP" | "EPD2D";
 export const PRODUCTS: { code: Product; label: string }[] = [
   { code: "EPMR", label: "regular" },
@@ -11,7 +12,7 @@ export interface StatePrice {
   state: string;
   abbr: string;
   price: number;
-  delta?: number | null; // 环比上周,离线快照无此字段
+  delta?: number | null; // Week-over-week delta; offline snapshots omit it.
   source: "state" | "padd";
 }
 export interface LatestResponse {
@@ -88,7 +89,7 @@ export const api = {
   metros: (abbr: string, product: Product = "EPMR") =>
     get<MetrosResponse>(
       `/api/prices/metros/${abbr}?product=${product}`, 15000
-    ), // 首次查看某州时后端会现场抓取,超时放宽
+    ), // First access to a state can trigger a backend fetch, so allow more time.
   nationalHistory: (weeks = 52, product: Product = "EPMR") =>
     get<HistoryResponse>(`/api/prices/history?weeks=${weeks}&product=${product}`),
   stateHistory: (abbr: string, weeks = 52, product: Product = "EPMR") =>

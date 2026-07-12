@@ -1,9 +1,10 @@
-"""FastAPI 后端:本地按需运行,展示时通过 cloudflared 隧道暴露.
+"""FastAPI backend: runs locally on demand and can be exposed via cloudflared.
 
-启动:
+Start:
     uvicorn main:app --reload --port 8000
 
-服务运行期间会自动增量更新数据:启动时跑一次,之后每天 09:30 再查一次.
+While the service is running, data refreshes incrementally: once at startup and
+again every day at 09:30.
 """
 from contextlib import asynccontextmanager
 from datetime import date as ddate
@@ -18,25 +19,30 @@ from areas import ABBR_STATE, STATE_ABBR, STATE_PADD, state_duoarea
 
 
 def _auto_ingest() -> None:
-    """后台拉取 EIA(周) + AAA(日);单个失败只记录,不影响服务与彼此."""
+    """Fetch EIA weekly data and AAA daily data in the background.
+
+    Individual failures are logged only; they do not stop the service or the
+    other ingest job.
+    """
     try:
         from ingest_eia import run as run_eia
         run_eia(full=False)
     except Exception as exc:  # noqa: BLE001
-        print(f"[auto-ingest][eia] 失败: {exc}")
+        print(f"[auto-ingest][eia] failed: {exc}")
     try:
         from ingest_aaa import run as run_aaa
         run_aaa()
     except Exception as exc:  # noqa: BLE001
-        print(f"[auto-ingest][aaa] 失败: {exc}")
+        print(f"[auto-ingest][aaa] failed: {exc}")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     scheduler = BackgroundScheduler()
-    # EIA 周一发布;每天检查一次,增量拉取幂等无副作用
+    # EIA publishes weekly on Mondays. Daily checks are safe because incremental
+    # ingest is idempotent.
     scheduler.add_job(_auto_ingest, "cron", hour=9, minute=30, id="daily-ingest")
-    scheduler.add_job(_auto_ingest, id="startup-ingest")  # 启动后立刻跑一次(后台线程,不阻塞)
+    scheduler.add_job(_auto_ingest, id="startup-ingest")  # Run once after startup in a non-blocking background thread.
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
@@ -58,7 +64,7 @@ VALID_PRODUCTS = {"EPMR", "EPMM", "EPMP", "EPD2D"}
 def check_product(product: str) -> str:
     p = product.upper()
     if p not in VALID_PRODUCTS:
-        raise HTTPException(400, f"product 必须是 {sorted(VALID_PRODUCTS)} 之一")
+        raise HTTPException(400, f"product must be one of {sorted(VALID_PRODUCTS)}")
     return p
 
 
@@ -86,7 +92,10 @@ AAA_FRESH_DAYS = 3
 
 
 def _aaa_latest(product: str) -> dict | None:
-    """AAA 日更数据(近 3 天内有抓取时优先使用);全部 50 州皆为州级."""
+    """Return fresh AAA daily data when available within the last 3 days.
+
+    AAA covers all 50 states at state level.
+    """
     with db.connect() as conn:
         dates = [
             r["date"]
@@ -128,7 +137,8 @@ def _aaa_latest(product: str) -> dict | None:
     if not states:
         return None
 
-    # 全国:regular 用页面标注的官方值;其他油品用州均值近似
+    # National: regular uses the official page value; other products approximate
+    # national price with the state average.
     national = cur.get("US")
     if national is None:
         national = round(mean(s["price"] for s in states), 3)
@@ -147,10 +157,11 @@ def _aaa_latest(product: str) -> dict | None:
 
 @app.get("/api/prices/latest")
 def prices_latest(product: str = Query("EPMR")):
-    """最新全部 50 州价格 + 环比.
+    """Latest prices and deltas for all 50 states.
 
-    优先 AAA 日更(50 州全州级);无新鲜 AAA 数据时回退 EIA 周更
-    (source='state' 州级 / 'padd' 大区回退).
+    Prefer AAA daily data, which is state-level for all 50 states. Fall back to
+    EIA weekly data when fresh AAA data is unavailable. source='state' means
+    state-level data; source='padd' means regional fallback.
     """
     product = check_product(product)
     aaa = _aaa_latest(product)
@@ -166,7 +177,7 @@ def prices_latest(product: str = Query("EPMR")):
             ).fetchall()
         ]
         if not periods:
-            raise HTTPException(503, "该油品无数据,请先运行 ingest_eia.py")
+            raise HTTPException(503, "No data for this product; run ingest_eia.py first")
         period = periods[0]
         prev_period = periods[1] if len(periods) > 1 else None
 
@@ -217,7 +228,7 @@ def prices_latest(product: str = Query("EPMR")):
 
 @app.get("/api/prices/cities")
 def city_prices(product: str = Query("EPMR")):
-    """最新一周全部都市区(EIA 覆盖约 10 城)价格 + 环比."""
+    """Latest weekly metro prices and deltas for all EIA-covered metros."""
     product = check_product(product)
     with db.connect() as conn:
         periods = [
@@ -258,11 +269,14 @@ def city_prices(product: str = Query("EPMR")):
 
 @app.get("/api/prices/metros/{abbr}")
 def metro_prices(abbr: str, product: str = Query("EPMR")):
-    """指定州的都市区均价.缓存 >1 天时按需抓取该州页(单页请求)."""
+    """Metro averages for one state.
+
+    Fetches the state page on demand when the cache is older than one day.
+    """
     product = check_product(product)
     abbr = abbr.upper()
     if abbr not in ABBR_STATE:
-        raise HTTPException(404, f"未知州缩写: {abbr}")
+        raise HTTPException(404, f"Unknown state abbreviation: {abbr}")
 
     def latest_date() -> str | None:
         with db.connect() as conn:
@@ -280,7 +294,7 @@ def metro_prices(abbr: str, product: str = Query("EPMR")):
             fetch_and_store(abbr)
             d = latest_date()
         except Exception as exc:  # noqa: BLE001
-            print(f"[metros][{abbr}] 抓取失败,使用现有缓存: {exc}")
+            print(f"[metros][{abbr}] fetch failed, using existing cache: {exc}")
     if d is None:
         return {"period": None, "state": ABBR_STATE[abbr], "metros": []}
 
@@ -318,10 +332,13 @@ def metro_prices(abbr: str, product: str = Query("EPMR")):
 
 @app.get("/api/prices/counties/{abbr}")
 def county_prices(abbr: str):
-    """指定州的县级 regular 均价(数据随 metros 抓取一并缓存)."""
+    """County-level regular averages for one state.
+
+    County data is cached together with the metro fetch.
+    """
     abbr = abbr.upper()
     if abbr not in ABBR_STATE:
-        raise HTTPException(404, f"未知州缩写: {abbr}")
+        raise HTTPException(404, f"Unknown state abbreviation: {abbr}")
 
     def latest_date() -> str | None:
         with db.connect() as conn:
@@ -336,10 +353,10 @@ def county_prices(abbr: str):
     if stale:
         try:
             from aaa_metros import fetch_and_store
-            fetch_and_store(abbr)  # 会同时更新 metro + 县
+            fetch_and_store(abbr)  # Updates both metro and county data.
             d = latest_date()
         except Exception as exc:  # noqa: BLE001
-            print(f"[counties][{abbr}] 抓取失败,使用现有缓存: {exc}")
+            print(f"[counties][{abbr}] fetch failed, using existing cache: {exc}")
     if d is None:
         return {"period": None, "state": ABBR_STATE[abbr], "counties": []}
 
@@ -379,7 +396,7 @@ def state_history(abbr: str, weeks: int = 52, product: str = Query("EPMR")):
     product = check_product(product)
     abbr = abbr.upper()
     if abbr not in ABBR_STATE:
-        raise HTTPException(404, f"未知州缩写: {abbr}")
+        raise HTTPException(404, f"Unknown state abbreviation: {abbr}")
     weeks = max(1, min(weeks, 520))
 
     with db.connect() as conn:
@@ -396,7 +413,7 @@ def state_history(abbr: str, weeks: int = 52, product: str = Query("EPMR")):
             rows, source = query(STATE_PADD[abbr]), "padd"
 
     if not rows:
-        raise HTTPException(404, "无数据")
+        raise HTTPException(404, "No data")
     return {
         "area": ABBR_STATE[abbr], "abbr": abbr, "source": source,
         "series": [{"period": r["period"], "price": r["value"]} for r in reversed(rows)],

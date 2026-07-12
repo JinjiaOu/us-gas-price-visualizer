@@ -9,7 +9,7 @@
   --text-faint: #565364;
   --border: #232030;
   --border-strong: #363245;
-  /* magma 截断版 低->高 */
+  /* Truncated magma scale, low -> high */
   --heat-0: #3b2d8f;
   --heat-1: #6b2fa8;
   --heat-2: #a83289;
@@ -63,7 +63,7 @@ body {
 
 .app { max-width: 1320px; margin: 0 auto; padding: 32px 24px 64px; }
 
-/* ---------- 顶栏 ---------- */
+/* ---------- Top Bar ---------- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 18px; flex-wrap: wrap; gap: 12px;
@@ -84,7 +84,7 @@ body {
 }
 .toggle:hover { color: var(--text); border-color: var(--text-faint); }
 
-/* ---------- 状态提示 ---------- */
+/* ---------- Status Banner ---------- */
 .banner {
   background: rgba(224, 76, 103, 0.08);
   border: 0.5px solid rgba(224, 76, 103, 0.35);
@@ -101,7 +101,7 @@ body {
 }
 @keyframes pulse { 50% { opacity: 0.45; } }
 
-/* ---------- 油品切换 pills ---------- */
+/* ---------- Fuel Type Pills ---------- */
 .pills { display: inline-flex; gap: 4px; background: var(--panel);
   border: 0.5px solid var(--border); border-radius: 10px; padding: 4px; }
 .pill {
@@ -120,7 +120,7 @@ body {
   flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
 }
 
-/* ---------- 指标卡 ---------- */
+/* ---------- Metric Cards ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px; margin-bottom: 16px; }
 .card {
@@ -143,7 +143,7 @@ body {
 .delta.down { color: var(--down); }
 @keyframes slide-in { from { opacity: 0; transform: translateX(-4px); } }
 
-/* ---------- dashboard 主区 ---------- */
+/* ---------- Dashboard Main Area ---------- */
 .main-grid {
   display: grid; grid-template-columns: minmax(0, 2.9fr) minmax(230px, 1fr);
   gap: 14px; align-items: start;
@@ -159,7 +159,7 @@ body {
 }
 .map-wrap svg { display: block; }
 
-/* 州块入场:依次点亮(通过内联 animationDelay 错开) */
+/* State entrance animation: staggered through inline animationDelay. */
 .state {
   transition: filter .18s ease, opacity .35s ease, transform .24s cubic-bezier(.2,.8,.2,1);
   outline: none;
@@ -180,23 +180,23 @@ body {
 }
 .state-hover-overlay {
   pointer-events: none;
-  animation: none;                 /* 不重播入场淡入 */
-  transition: filter .18s ease;    /* transform 全权交给 JS 循环,避免双重平滑 */
-  transform-box: view-box;         /* 不依赖 fill-box 的 3D 支持(Chrome 合成层下不可靠) */
-  transform-origin: 0 0;           /* 原点固定,旋转中心由 JS 的共轭平移精确控制 */
+  animation: none;                 /* Do not replay the entrance fade. */
+  transition: filter .18s ease;    /* JS owns transform animation to avoid double smoothing. */
+  transform-box: view-box;         /* Avoid relying on fill-box 3D support, which is flaky in Chrome compositing. */
+  transform-origin: 0 0;           /* Keep origin fixed; JS controls the pivot with paired translations. */
   filter:
     brightness(1.24)
     drop-shadow(var(--state-shadow-x, 0px) var(--state-shadow-y, 5px) 8px var(--glow));
 }
 .state.selected { filter: brightness(1.1) drop-shadow(0 0 8px var(--glow)); }
-/* 州视图:飞入选中州,其余州几乎隐去,像切换到州地图 */
+/* State view: fly into the selected state and fade the rest like a state map. */
 .map-stateview .state:not(.selected) { opacity: 0.07; }
 .map-stateview .state:not(.selected):hover {
   opacity: 0.45;
 }
 .map-stateview .state.selected:hover { filter: brightness(1.1) drop-shadow(0 0 8px var(--glow)); }
 
-/* 县级图层 */
+/* County layer */
 .county {
   outline: none;
   animation: state-in .45s ease both;
@@ -204,7 +204,7 @@ body {
 }
 .county:hover { filter: brightness(1.22) drop-shadow(0 0 4px var(--glow)); }
 
-/* 返回按钮悬浮于地图左上 */
+/* Back button floats over the map. */
 .map-back {
   position: absolute; top: 16px; left: 16px; z-index: 5;
   background: var(--panel-2); border: 0.5px solid var(--border-strong);
@@ -215,7 +215,7 @@ body {
 }
 .map-back:hover { color: var(--text); border-color: var(--text-faint); }
 
-/* 城市标记 */
+/* City markers */
 .city-marker { cursor: pointer; animation: chip-in .45s ease both; }
 .city-dot { fill: var(--text); }
 .city-ring {
@@ -245,7 +245,7 @@ body {
   margin-top: 12px; font-size: 12px; color: var(--text-dim); }
 .legend .ramp { flex: 1; height: 8px; border-radius: 4px; }
 
-/* ---------- 侧栏 ---------- */
+/* ---------- Sidebar ---------- */
 .side { display: flex; flex-direction: column; gap: 14px; }
 .panel-box {
   background: var(--panel); border: 0.5px solid var(--border);
@@ -272,13 +272,13 @@ body {
 
 .metro-list { max-height: 240px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; }
 
-/* 选中州信息卡 */
+/* Selected-state info card */
 .info-card .big { font-size: 28px; font-weight: 600; margin: 2px 0 4px;
   font-variant-numeric: tabular-nums; }
 .info-card .meta { font-size: 12px; color: var(--text-dim); line-height: 1.7; }
 .info-empty { font-size: 12.5px; color: var(--text-faint); padding: 6px 0 2px; }
 
-/* ---------- 趋势区 ---------- */
+/* ---------- Trend Area ---------- */
 .trend {
   margin-top: 14px; background: var(--panel);
   border: 0.5px solid var(--border); border-radius: 14px;
@@ -301,7 +301,7 @@ body {
   padding: 60px 0 70px; text-align: center;
 }
 
-/* 对比 chips */
+/* Comparison chips */
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;

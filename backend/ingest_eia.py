@@ -1,10 +1,10 @@
-"""EIA 数据拉取:周度普通汽油零售价 -> SQLite.
+"""EIA data ingest: weekly retail gasoline/diesel prices -> SQLite.
 
-用法:
-    python ingest_eia.py            # 增量:只拉库里没有的最新数据
-    python ingest_eia.py --full     # 全量:拉最近 ~3 年
+Usage:
+    python ingest_eia.py            # Incremental: fetch only new data
+    python ingest_eia.py --full     # Full: fetch the most recent ~3 years
 
-需要 .env 里配置 EIA_API_KEY.
+Requires EIA_API_KEY in .env.
 """
 import argparse
 import os
@@ -20,7 +20,7 @@ load_dotenv()
 
 API_KEY = os.getenv("EIA_API_KEY", "")
 BASE_URL = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
-# 普通 / 中级 / 高级汽油 + 柴油
+# Regular / midgrade / premium gasoline + diesel
 PRODUCTS = ["EPMR", "EPMM", "EPMP", "EPD2D"]
 PAGE_SIZE = 5000
 
@@ -44,7 +44,7 @@ def fetch_page(offset: int, start: str | None) -> dict:
 
 
 def keep_row(row: dict) -> bool:
-    """保留 全国(NUS) / 州(S**) / PADD 区(R**) / 都市区(Y**)."""
+    """Keep national (NUS), state (S**), PADD region (R**), and metro (Y**) rows."""
     area = row.get("duoarea", "")
     return (
         area == "NUS"
@@ -56,11 +56,12 @@ def keep_row(row: dict) -> bool:
 
 def run(full: bool) -> None:
     if not API_KEY:
-        raise RuntimeError("缺少 EIA_API_KEY:复制 .env.example 为 .env 并填入你的 key")
+        raise RuntimeError("Missing EIA_API_KEY: copy .env.example to .env and add your key")
 
     db.init_db()
 
-    # 增量模式:从库里最新周开始拉(重叠一周,靠 upsert 去重)
+    # Incremental mode starts from the latest stored week. The one-week overlap
+    # is deduplicated by upsert.
     start = None
     if not full:
         with db.connect() as conn:
@@ -69,7 +70,7 @@ def run(full: bool) -> None:
     if full or start is None:
         start = "2023-01-01"
 
-    print(f"拉取 EIA 数据,start={start} ...")
+    print(f"Fetching EIA data, start={start} ...")
     offset, total_kept = 0, 0
     while True:
         page = fetch_page(offset, start)
@@ -91,7 +92,7 @@ def run(full: bool) -> None:
         total_kept += len(rows)
         offset += PAGE_SIZE
         total = int(page.get("total", 0))
-        print(f"  offset={offset}, 累计入库 {total_kept} 行 (API total={total})")
+        print(f"  offset={offset}, stored {total_kept} rows so far (API total={total})")
         if offset >= total:
             break
 
@@ -99,10 +100,10 @@ def run(full: bool) -> None:
     with db.connect() as conn:
         n = conn.execute("SELECT COUNT(*) AS n FROM prices").fetchone()["n"]
         latest = conn.execute("SELECT MAX(period) AS p FROM prices").fetchone()["p"]
-    print(f"完成:库内共 {n} 行,最新周 {latest}")
+    print(f"Done: database has {n} rows, latest week {latest}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--full", action="store_true", help="全量拉取(约3年)")
+    parser.add_argument("--full", action="store_true", help="Full fetch, about 3 years")
     run(parser.parse_args().full)

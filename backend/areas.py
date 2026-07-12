@@ -1,10 +1,12 @@
-"""州 <-> EIA duoarea 映射,以及无州级数据时的 PADD 大区回退.
+"""State <-> EIA duoarea mapping, plus PADD fallback for missing state data.
 
-EIA gnd 数据集只覆盖约 10 个州的州级序列,
-其余州回退到所属 PADD 子区/大区的均价 (source='padd').
+The EIA gnd dataset only includes state-level series for roughly 10 states.
+All other states fall back to their PADD subregion/region average
+(source='padd').
 """
 
-# 州全名 -> 两字母缩写(与前端 us-atlas properties.name 对齐)
+# Full state name -> two-letter abbreviation, aligned with us-atlas
+# properties.name on the frontend.
 STATE_ABBR: dict[str, str] = {
     "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
     "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
@@ -22,28 +24,28 @@ STATE_ABBR: dict[str, str] = {
 }
 ABBR_STATE = {v: k for k, v in STATE_ABBR.items()}
 
-# 州缩写 -> 所属 PADD 子区/大区的 EIA duoarea 码
+# State abbreviation -> EIA duoarea code for its PADD subregion/region.
 STATE_PADD: dict[str, str] = {
-    # PADD 1A 新英格兰
+    # PADD 1A New England
     "CT": "R1X", "ME": "R1X", "MA": "R1X", "NH": "R1X", "RI": "R1X", "VT": "R1X",
-    # PADD 1B 中大西洋
+    # PADD 1B Central Atlantic
     "DE": "R1Y", "MD": "R1Y", "NJ": "R1Y", "NY": "R1Y", "PA": "R1Y",
-    # PADD 1C 南大西洋
+    # PADD 1C Lower Atlantic
     "FL": "R1Z", "GA": "R1Z", "NC": "R1Z", "SC": "R1Z", "VA": "R1Z", "WV": "R1Z",
-    # PADD 2 中西部
+    # PADD 2 Midwest
     "IL": "R20", "IN": "R20", "IA": "R20", "KS": "R20", "KY": "R20", "MI": "R20",
     "MN": "R20", "MO": "R20", "NE": "R20", "ND": "R20", "OH": "R20", "OK": "R20",
     "SD": "R20", "TN": "R20", "WI": "R20",
-    # PADD 3 墨西哥湾
+    # PADD 3 Gulf Coast
     "AL": "R30", "AR": "R30", "LA": "R30", "MS": "R30", "NM": "R30", "TX": "R30",
-    # PADD 4 落基山
+    # PADD 4 Rocky Mountain
     "CO": "R40", "ID": "R40", "MT": "R40", "UT": "R40", "WY": "R40",
-    # PADD 5 西海岸
+    # PADD 5 West Coast
     "AK": "R50", "AZ": "R50", "CA": "R50", "HI": "R50", "NV": "R50",
     "OR": "R50", "WA": "R50",
 }
 
 
 def state_duoarea(abbr: str) -> str:
-    """州级 duoarea 码,如 CA -> SCA."""
+    """Return the state-level duoarea code, such as CA -> SCA."""
     return f"S{abbr}"
