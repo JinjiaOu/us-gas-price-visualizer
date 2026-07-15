@@ -24,6 +24,9 @@
   --glow: rgba(255, 109, 56, 0.4);
   --cmp-1: #4aa3df;
   --cmp-2: #b58ae0;
+  --contour-line: rgba(95, 220, 205, 0.15);
+  --contour-grid: rgba(255, 255, 255, 0.032);
+  --contour-glow: rgba(255, 109, 56, 0.075);
 }
 
 :root[data-theme="light"] {
@@ -49,6 +52,9 @@
   --glow: rgba(207, 61, 16, 0.25);
   --cmp-1: #2478b5;
   --cmp-2: #7e56bd;
+  --contour-line: rgba(45, 72, 86, 0.11);
+  --contour-grid: rgba(20, 24, 32, 0.035);
+  --contour-glow: rgba(207, 61, 16, 0.045);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,9 +65,27 @@ body {
   font-family: "Inter", -apple-system, system-ui, "PingFang SC", sans-serif;
   transition: background .35s ease, color .35s ease;
 }
+.contour-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.92;
+  mix-blend-mode: screen;
+}
+:root[data-theme="light"] .contour-bg {
+  opacity: 0.7;
+  mix-blend-mode: multiply;
+}
 .mono { font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
 
-.app { max-width: 1320px; margin: 0 auto; padding: 32px 24px 64px; }
+.app {
+  position: relative;
+  z-index: 1;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
 
 /* ---------- Top Bar ---------- */
 .topbar {

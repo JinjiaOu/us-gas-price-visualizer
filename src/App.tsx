@@ -11,6 +11,7 @@ import { api, PRODUCTS } from "./api";
 import type {
   CountyPrice, LatestResponse, MetroPrice, Product, SeriesPoint, StatePrice,
 } from "./api";
+import { ContourBackground } from "./ContourBackground";
 import { snapshot } from "./data/snapshot";
 import "./theme.css";
 
@@ -589,7 +590,9 @@ export default function App() {
   const productDisabled = mode !== "live";
 
   return (
-    <div className="app">
+    <>
+      <ContourBackground theme={theme} />
+      <div className="app">
       <div className="topbar">
         <div>
           <div className="title">US Gas Price Visualizer</div>
@@ -973,7 +976,8 @@ export default function App() {
           {tip.text}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
