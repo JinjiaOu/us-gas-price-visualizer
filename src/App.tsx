@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import { api, PRODUCTS } from "./api";
 import type {
-  CountyPrice, LatestResponse, MetroPrice, Product, SeriesPoint, StatePrice,
+  CountyPrice, HealthResponse, LatestResponse, MetroPrice, Product, SeriesPoint, StatePrice,
 } from "./api";
 import { ContourBackground } from "./ContourBackground";
 import { snapshot } from "./data/snapshot";
@@ -27,6 +27,9 @@ const STATE_FIPS: Record<string, string> = {
   OR:"41",PA:"42",RI:"44",SC:"45",SD:"46",TN:"47",TX:"48",UT:"49",VT:"50",
   VA:"51",WA:"53",WV:"54",WI:"55",WY:"56",
 };
+const FIPS_STATE = Object.fromEntries(
+  Object.entries(STATE_FIPS).map(([abbr, fips]) => [fips, abbr])
+) as Record<string, string>;
 
 // Normalize county names for AAA/topojson matching by ignoring case,
 // punctuation, and suffixes such as County and Parish.
@@ -38,6 +41,10 @@ function normCounty(name: string): string {
     .replace(/\bsaint\b/g, "st")
     .replace(/\b(county|parish|borough|census area|municipality|city and)\b/g, "")
     .replace(/[^a-z]/g, "");
+}
+function countyDataKey(name: string): string {
+  const cityOf = /^city of\s+(.+)$/i.exec(name.trim());
+  return normCounty(cityOf ? `${cityOf[1]} city` : name);
 }
 
 // County codes >= 500 are usually independent cities (for example Alexandria
@@ -74,6 +81,24 @@ type HoverTilt = {
   transform: string;
   shadowX: string;
   shadowY: string;
+};
+type SearchResult =
+  | { kind: "state"; label: string; detail: string; state: StatePrice }
+  | { kind: "metro"; label: string; detail: string; state: StatePrice; metro: MetroPrice }
+  | { kind: "county"; label: string; detail: string; state: StatePrice; county?: CountyPrice; norm: string };
+type WatchItem = {
+  abbr: string;
+  threshold: number;
+};
+type CountyIndexEntry = {
+  county: string;
+  stateAbbr: string;
+  stateName: string;
+  norm: string;
+};
+type TopoCountyGeometry = {
+  id: string | number;
+  properties?: { name?: string };
 };
 
 const MAP_W = 920;
@@ -134,6 +159,40 @@ function shortDate(period: string): string {
   const [y, m, d] = period.split("-");
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${months[Number(m) - 1]} ${d} '${y.slice(2)}`;
+}
+function shortDateTime(value: string | null | undefined): string {
+  if (!value) return "n/a";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+}
+function searchKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function readWatchlist(): WatchItem[] {
+  try {
+    const raw = localStorage.getItem("watchlist");
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x) =>
+      typeof x?.abbr === "string" && typeof x?.threshold === "number"
+    );
+  } catch {
+    return [];
+  }
+}
+function rangeLabel(weeks: number): string {
+  return weeks >= 104 ? `${Math.round(weeks / 52)}y` : `${weeks}w`;
+}
+function signedMoney(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(2)}`;
+}
+function signedPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${Math.abs(value).toFixed(1)}%`;
 }
 
 function useCountUp(target: number, duration = 700): number {
@@ -225,9 +284,15 @@ export default function App() {
   const [product, setProduct] = useState<Product>("EPMR");
   const [range, setRange] = useState(52);
   const [latest, setLatest] = useState<LatestResponse | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [countyIndex, setCountyIndex] = useState<CountyIndexEntry[]>([]);
   const [metros, setMetros] = useState<MetroPrice[]>([]);
   const [counties, setCounties] = useState<CountyPrice[]>([]);
   const [selected, setSelected] = useState<StatePrice | null>(null);
+  const [search, setSearch] = useState("");
+  const [searchFocus, setSearchFocus] = useState<SearchResult | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchItem[]>(readWatchlist);
+  const [watchThreshold, setWatchThreshold] = useState("");
   const [compare, setCompare] = useState<string[]>([]);
   const [seriesMap, setSeriesMap] = useState<Record<string, SeriesPoint[]>>({});
   const [trendNote, setTrendNote] = useState("");
@@ -257,15 +322,52 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    localStorage.setItem("watchlist", JSON.stringify(watchlist));
+  }, [watchlist]);
+
+  useEffect(() => {
     (async () => {
       try {
-        await api.health();
+        setHealth(await api.health());
         setMode("live");
       } catch {
+        setHealth(null);
         setLatest(snapshot);
         setMode("offline");
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(countiesUrl)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((topology) => {
+        if (cancelled || !topology) return;
+        const geometries = topology.objects?.counties?.geometries as
+          | TopoCountyGeometry[]
+          | undefined;
+        if (!geometries) return;
+
+        const entries = geometries.flatMap((geo) => {
+          const id = String(geo.id).padStart(5, "0");
+          const stateAbbr = FIPS_STATE[id.slice(0, 2)];
+          const state = snapshot.states.find((s) => s.abbr === stateAbbr);
+          const county = geo.properties?.name;
+          if (!state || !county) return [];
+          return [{
+            county,
+            stateAbbr,
+            stateName: state.state,
+            norm: countyDataKey(county),
+          }];
+        });
+        setCountyIndex(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setCountyIndex([]);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -384,11 +486,13 @@ export default function App() {
 
   function backToUS() {
     setSelected(null);
+    setSearchFocus(null);
     setTargetView(US_VIEW);
   }
 
   function selectState(sp: StatePrice) {
     setSelected(sp);
+    setSearchFocus(null);
     const path = mapWrapRef.current?.querySelector<SVGPathElement>(
       `path[data-name="${CSS.escape(sp.state)}"]`
     );
@@ -485,6 +589,29 @@ export default function App() {
     }
   }
 
+  function handleSearchPick(result: SearchResult) {
+    setSearch(result.label);
+    selectState(result.state);
+    setSearchFocus(result);
+  }
+
+  function addWatchItem() {
+    if (!selected) return;
+    const parsed = Number(watchThreshold);
+    const threshold = Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : Number((selected.price + 0.1).toFixed(2));
+    setWatchlist((items) => [
+      { abbr: selected.abbr, threshold },
+      ...items.filter((item) => item.abbr !== selected.abbr),
+    ]);
+    setWatchThreshold("");
+  }
+
+  function removeWatchItem(abbr: string) {
+    setWatchlist((items) => items.filter((item) => item.abbr !== abbr));
+  }
+
   const priceByName = useMemo(() => {
     const m = new Map<string, StatePrice>();
     latest?.states.forEach((s) => m.set(s.state, s));
@@ -510,6 +637,153 @@ export default function App() {
   const loState = sortedDesc[sortedDesc.length - 1];
   const rankOf = (abbr: string) =>
     sortedDesc.findIndex((s) => s.abbr === abbr) + 1;
+
+  const providerStatus = useMemo(() => {
+    if (mode === "offline") {
+      return {
+        backend: "offline",
+        aaa: "cached snapshot",
+        eia: snapshot.period,
+        ingest: "n/a",
+        mode: "offline fallback",
+      };
+    }
+    return {
+      backend: mode === "loading" ? "checking" : "online",
+      aaa: health?.aaa_latest_date ?? "n/a",
+      eia: health?.latest_period ?? latest?.period ?? "n/a",
+      ingest: shortDateTime(health?.last_aaa_ingest ?? health?.last_ingest),
+      mode: "AAA daily primary / EIA fallback",
+    };
+  }, [health, latest, mode]);
+
+  const watchRows = useMemo(() => {
+    if (!latest) return [];
+    const byAbbr = new Map(latest.states.map((s) => [s.abbr, s]));
+    return watchlist.map((item) => {
+      const state = byAbbr.get(item.abbr);
+      const gap = state ? state.price - item.threshold : null;
+      return { item, state, gap, triggered: gap != null && gap >= 0 };
+    });
+  }, [latest, watchlist]);
+
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const q = searchKey(search);
+    if (!q || !latest) return [];
+    const stateByAbbr = new Map(latest.states.map((s) => [s.abbr, s]));
+    const resultKeys = new Set<string>();
+
+    const results: SearchResult[] = latest.states
+      .filter((s) =>
+        searchKey(s.state).includes(q) || searchKey(s.abbr).includes(q)
+      )
+      .slice(0, 6)
+      .map((state) => ({
+        kind: "state",
+        label: state.state,
+        detail: `${state.abbr}  $${state.price.toFixed(2)}`,
+        state,
+      }));
+
+    results.forEach((r) => resultKeys.add(`${r.kind}-${r.state.abbr}-${searchKey(r.label)}`));
+
+    if (selected) {
+      metros
+        .filter((m) => searchKey(m.name).includes(q))
+        .slice(0, 4)
+        .forEach((metro) => {
+          const key = `metro-${selected.abbr}-${searchKey(metro.name)}`;
+          if (resultKeys.has(key)) return;
+          resultKeys.add(key);
+          results.push({
+            kind: "metro",
+            label: metro.name,
+            detail: `${selected.abbr} metro  $${metro.price.toFixed(2)}`,
+            state: selected,
+            metro,
+          });
+        });
+
+      counties
+        .filter((c) => searchKey(c.county).includes(q))
+        .slice(0, 4)
+        .forEach((county) => {
+          const norm = countyDataKey(county.county);
+          const key = `county-${selected.abbr}-${norm}`;
+          if (resultKeys.has(key)) return;
+          resultKeys.add(key);
+          results.push({
+            kind: "county",
+            label: county.county,
+            detail: `${selected.abbr} county  $${county.price.toFixed(2)}`,
+            state: selected,
+            county,
+            norm,
+          });
+        });
+    }
+
+    countyIndex
+      .filter((entry) =>
+        searchKey(entry.county).includes(q) ||
+        searchKey(entry.stateName).includes(q) ||
+        searchKey(entry.stateAbbr).includes(q)
+      )
+      .slice(0, 8)
+      .forEach((entry) => {
+        const key = `county-${entry.stateAbbr}-${entry.norm}`;
+        if (resultKeys.has(key)) return;
+        const state = stateByAbbr.get(entry.stateAbbr);
+        if (!state) return;
+        resultKeys.add(key);
+        results.push({
+          kind: "county",
+          label: entry.county,
+          detail: `${entry.stateAbbr} county  load state data`,
+          state,
+          norm: entry.norm,
+        });
+      });
+
+    return results.slice(0, 9);
+  }, [counties, countyIndex, latest, metros, search, selected]);
+
+  const selectedInsights = useMemo(() => {
+    if (!selected || !latest) return null;
+
+    const rank = sortedDesc.findIndex((s) => s.abbr === selected.abbr) + 1;
+    const cheaperCount = latest.states.filter((s) => s.price < selected.price).length;
+    const percentile = latest.states.length
+      ? Math.round((cheaperCount / latest.states.length) * 100)
+      : null;
+    const vsNational = latest.national == null
+      ? null
+      : selected.price - latest.national;
+    const selectedSeries = seriesMap[selected.abbr] ?? [];
+    const seriesPrices = selectedSeries.map((p) => p.price);
+    const rangeLow = seriesPrices.length ? Math.min(...seriesPrices) : null;
+    const rangeHigh = seriesPrices.length ? Math.max(...seriesPrices) : null;
+    const first = selectedSeries[0]?.price;
+    const last = selectedSeries[selectedSeries.length - 1]?.price;
+    const trendDelta = first != null && last != null ? last - first : null;
+    const trendPct = first && trendDelta != null ? (trendDelta / first) * 100 : null;
+
+    return {
+      rank,
+      percentile,
+      vsNational,
+      rangeLow,
+      rangeHigh,
+      trendDelta,
+      trendPct,
+      rangeText: rangeLabel(range),
+      sourceText: selected.source === "padd"
+        ? "PADD regional fallback"
+        : mode === "live"
+          ? "AAA daily state average"
+          : "cached state snapshot",
+    };
+  }, [latest, mode, range, selected, seriesMap, sortedDesc]);
 
   const biggestMover = useMemo(() => {
     if (!latest) return null;
@@ -557,9 +831,7 @@ export default function App() {
   const countyByNorm = useMemo(() => {
     const m = new Map<string, number>();
     counties.forEach((c) => {
-      const cityOf = /^city of\s+(.+)$/i.exec(c.county.trim());
-      const key = normCounty(cityOf ? `${cityOf[1]} city` : c.county);
-      m.set(key, c.price);
+      m.set(countyDataKey(c.county), c.price);
     });
     return m;
   }, [counties]);
@@ -671,6 +943,78 @@ export default function App() {
         </div>
       </div>
 
+      <div className="ops-panel">
+        <div className="status-card">
+          <div className="ops-heading mono">DATA STATUS</div>
+          <div className="status-head">
+            <span className={`status-dot ${mode}`} />
+            <strong className="mono">{providerStatus.backend}</strong>
+            <span>{providerStatus.mode}</span>
+          </div>
+          <div className="status-grid mono">
+            <span>AAA latest</span>
+            <strong>{providerStatus.aaa}</strong>
+            <span>EIA week</span>
+            <strong>{providerStatus.eia}</strong>
+            <span>last ingest</span>
+            <strong>{providerStatus.ingest}</strong>
+          </div>
+        </div>
+
+        <div className="search-card">
+          <div className="ops-heading mono">SEARCH</div>
+          <div className="search-input-wrap">
+            <input
+              className="search-input mono"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && searchResults[0]) {
+                  handleSearchPick(searchResults[0]);
+                }
+              }}
+              placeholder={selected ? `state, metro, county in ${selected.abbr}` : "state, abbreviation, or county"}
+            />
+            {search && (
+              <button
+                className="search-clear"
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  setSearch("");
+                  setSearchFocus(null);
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+          {searchResults.length > 0 ? (
+            <div className="search-results">
+              {searchResults.map((r) => (
+                <button
+                  key={`${r.kind}-${r.label}-${r.detail}`}
+                  className={`search-result${searchFocus?.kind === r.kind && searchFocus.label === r.label ? " on" : ""}`}
+                  onClick={() => handleSearchPick(r)}
+                >
+                  <span>
+                    <strong>{r.label}</strong>
+                    <em>{r.kind}</em>
+                  </span>
+                  <span className="mono">{r.detail}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="search-empty">
+              {search
+                ? "no matching state or county"
+                : "search counties nationwide; metro search appears after selecting a state"}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="main-grid">
         <div>
           <div ref={mapWrapRef} className={`map-wrap${inStateView ? " map-stateview" : ""}`}>
@@ -765,14 +1109,22 @@ export default function App() {
                         .map((geo: any) => {
                           const cname = geo.properties.name as string;
                           const price = countyPriceFor(countyByNorm, geo.id, cname);
+                          const base = normCounty(cname);
+                          const code = Number(String(geo.id).slice(2));
+                          const geoCountyKeys = code >= 500
+                            ? [base + "city", base]
+                            : [base, base + "city"];
+                          const isSearchHit =
+                            searchFocus?.kind === "county" &&
+                            geoCountyKeys.includes(searchFocus.norm);
                           return (
                             <Geography
                               key={geo.rsmKey}
                               geography={geo}
-                              className="county"
+                              className={`county${isSearchHit ? " county-search-hit" : ""}`}
                               fill={price != null ? countyScale(price) : "var(--panel-2)"}
-                              stroke="var(--bg)"
-                              strokeWidth={0.35 / view.zoom}
+                              stroke={isSearchHit ? "var(--text)" : "var(--bg)"}
+                              strokeWidth={(isSearchHit ? 1.2 : 0.35) / view.zoom}
                               style={{
                                 default: { outline: "none" },
                                 hover: { outline: "none" },
@@ -831,11 +1183,15 @@ export default function App() {
             ))}
           </div>
           {selected && metros.length > 0 && (
-            <div className="panel-box">
+            <div className="panel-box metro-card">
               <h3 className="mono">METRO AVERAGES</h3>
               <div className="metro-list">
                 {metros.map((m) => (
-                  <div key={m.name} className="rank-row" style={{ cursor: "default" }}>
+                  <div
+                    key={m.name}
+                    className={`rank-row${searchFocus?.kind === "metro" && searchFocus.metro.name === m.name ? " on" : ""}`}
+                    style={{ cursor: "default" }}
+                  >
                     <span className="st">{m.name}</span>
                     <span className="pr mono">${m.price.toFixed(2)}</span>
                     <span className={`dl mono ${
@@ -859,17 +1215,106 @@ export default function App() {
                   <Delta d={selected.delta} />
                 </div>
                 <div className="meta mono">
-                  rank #{rankOf(selected.abbr)} of {sortedDesc.length}
+                  rank #{selectedInsights?.rank ?? rankOf(selected.abbr)} of {sortedDesc.length}
                   <br />
                   {selected.source === "padd"
                     ? "regional (PADD) average"
                     : "state-level series"}
                 </div>
+                {selectedInsights && (
+                  <div className="insights">
+                    <div className="insight-row">
+                      <span>vs national</span>
+                      <strong className="mono">{signedMoney(selectedInsights.vsNational)}</strong>
+                    </div>
+                    <div className="insight-row">
+                      <span>price percentile</span>
+                      <strong className="mono">
+                        {selectedInsights.percentile == null
+                          ? "n/a"
+                          : `${selectedInsights.percentile}th`}
+                      </strong>
+                    </div>
+                    <div className="insight-row">
+                      <span>{selectedInsights.rangeText} range</span>
+                      <strong className="mono">
+                        {selectedInsights.rangeLow == null || selectedInsights.rangeHigh == null
+                          ? "n/a"
+                          : `$${selectedInsights.rangeLow.toFixed(2)}-$${selectedInsights.rangeHigh.toFixed(2)}`}
+                      </strong>
+                    </div>
+                    <div className="insight-row">
+                      <span>{selectedInsights.rangeText} move</span>
+                      <strong className="mono">
+                        {signedMoney(selectedInsights.trendDelta)}
+                        <em>{signedPercent(selectedInsights.trendPct)}</em>
+                      </strong>
+                    </div>
+                    <div className="insight-source mono">
+                      {selectedInsights.sourceText}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className="info-empty">
                 click a state on the map or rankings
               </div>
+            )}
+          </div>
+
+          <div className="panel-box watch-card">
+            <h3 className="mono">WATCHLIST</h3>
+            {selected ? (
+              <div className="watch-add">
+                <span>{selected.abbr}</span>
+                <input
+                  className="watch-input mono"
+                  value={watchThreshold}
+                  onChange={(e) => setWatchThreshold(e.target.value)}
+                  placeholder={`>${(selected.price + 0.1).toFixed(2)}`}
+                  inputMode="decimal"
+                />
+                <button className="watch-add-btn mono" onClick={addWatchItem}>
+                  add
+                </button>
+              </div>
+            ) : (
+              <div className="watch-help">select a state to add a price alert</div>
+            )}
+            {watchRows.length > 0 ? (
+              <div className="watch-list">
+                {watchRows.map(({ item, state, gap, triggered }) => (
+                  <div key={item.abbr} className={`watch-row${triggered ? " alert" : ""}`}>
+                    <div>
+                      <strong className="mono">{item.abbr}</strong>
+                      <span>
+                        {state ? state.state : "not loaded"}
+                      </span>
+                    </div>
+                    <div className="watch-values mono">
+                      <span>
+                        {state ? `$${state.price.toFixed(2)}` : "n/a"}
+                      </span>
+                      <em>
+                        alert &gt; ${item.threshold.toFixed(2)}
+                      </em>
+                      {gap != null && (
+                        <b>{triggered ? `+${gap.toFixed(2)}` : `${gap.toFixed(2)}`}</b>
+                      )}
+                    </div>
+                    <button
+                      className="watch-remove"
+                      aria-label={`Remove ${item.abbr} alert`}
+                      onClick={() => removeWatchItem(item.abbr)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="watch-empty">no active alerts</div>
             )}
           </div>
         </div>

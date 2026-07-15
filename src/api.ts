@@ -60,6 +60,15 @@ export interface HistoryResponse {
   source?: string;
   series: SeriesPoint[];
 }
+export interface HealthResponse {
+  status: string;
+  rows: number;
+  latest_period: string | null;
+  last_ingest: string | null;
+  aaa_rows: number;
+  aaa_latest_date: string | null;
+  last_aaa_ingest: string | null;
+}
 
 const API_BASE: string =
   ((import.meta as any).env?.VITE_API_URL as string | undefined) ??
@@ -79,7 +88,7 @@ async function get<T>(path: string, timeoutMs = 6000): Promise<T> {
 
 export const api = {
   health: () =>
-    get<{ status: string; latest_period: string | null }>("/api/health", 3000),
+    get<HealthResponse>("/api/health", 3000),
   latest: (product: Product = "EPMR") =>
     get<LatestResponse>(`/api/prices/latest?product=${product}`),
   cities: (product: Product = "EPMR") =>
