@@ -1,13 +1,13 @@
 # US Gas Price Visualizer
 
-Full-stack, self-hosted dashboard for US gasoline prices — an interactive
-choropleth map with **state → metro → county** drill-down, week/day deltas,
-multi-state trend comparison, and a dark "data terminal" aesthetic.
+Full-stack, self-hosted dashboard for US gasoline prices: an interactive
+choropleth map with **state -> metro -> county** drill-down, week/day deltas,
+multi-state trend comparison, search, watchlist alerts, and dark/light themes.
 
-Built with a simple deployment model: **the frontend is always
-online, the backend runs on demand on my own machine** and is exposed through a
-Cloudflare Tunnel only when a live demo is needed. When the backend is offline,
-the frontend degrades to a cached real-data snapshot.
+Built with a simple deployment model: **the frontend is always online, while
+the backend runs on demand on my own machine** and can be exposed through a
+Cloudflare Tunnel when a live demo is needed. When the backend is offline, the
+frontend degrades to a cached real-data snapshot.
 
 ## Screenshots
 
@@ -21,56 +21,68 @@ the frontend degrades to a cached real-data snapshot.
 
 ## Features
 
-- **Interactive US choropleth** (Magma-derived color scale, color-blind safe)
-  with cursor-tracked 3D tilt on hover, animated camera fly-in on state
-  selection, and scroll-to-zoom in pixel space (safe for the AK/HI insets of
-  the AlbersUSA composite projection)
-- **Three-level drill-down**: national map → state view with county-level
-  choropleth (AAA, independent-city aware name matching) and a metro price
-  panel with day-over-day deltas
-- **The two data providers merged together**: AAA (daily, all 50 states,
-  scraped) powers "now"; EIA (weekly, official API) powers 3.5 years of
-  history. The API responds with `provider` and `source` fields so the UI can
-  label regional fallbacks instead of passing them off as state data
+- **Interactive US choropleth** with a Magma-derived color scale,
+  cursor-tracked 3D hover tilt, animated camera fly-in on state selection, and
+  scroll-to-zoom.
+- **Three-level drill-down**: national map -> state view -> county-level map,
+  with AAA metro averages and day-over-day deltas.
+- **Two data providers**: AAA daily state/metro/county
+  data powers "now"; EIA weekly official API data powers historical trends.
+  Regional fallback data is labeled instead of being passed off as state data.
+- **State Insights Panel** for the selected state: rank, price percentile,
+  difference versus national average, selected-range high/low, range movement,
+  and data-source labeling.
+- **Global search** for states, abbreviations, and counties. County search uses
+  a static county index to jump to the right state first, then loads
+  that state's live county data on demand.
+- **Watchlist / price alerts** stored in `localStorage`: add thresholds for
+  selected states and highlight alerts when the current price exceeds the
+  configured value.
+- **Provider status panel** showing backend status, AAA latest date, EIA latest
+  week, last ingest time, and current data mode.
 - Fuel-grade switching (regular / midgrade / premium / diesel), day-over-day
   deltas, biggest-mover card, top-5 rankings, 13w/26w/52w/3y trend ranges,
-  ctrl+click multi-state comparison, dark/light themes
+  ctrl/cmd-click multi-state comparison, offline snapshot mode, and an animated
+  canvas contour-line background.
 
 ## Architecture
 
-```
-┌────────────────────────────┐         ┌─────────────────────────────────┐
-│ Frontend · always online   │         │ Backend · on-demand, local      │
-│ React + TS + Vite (Vercel) │  HTTPS  │ FastAPI + SQLite                │
-│  · react-simple-maps + d3  │ ──────► │  · EIA API ingest (weekly)      │
-│  · Recharts trends         │ tunnel  │  · AAA scraper (daily, polite)  │
-│  · offline snapshot mode   │ ◄────── │  · per-state on-demand caching  │
-└────────────────────────────┘         │  · APScheduler auto-refresh     │
-                                       └─────────────────────────────────┘
+```text
+Frontend: React + TypeScript + Vite
+  - react-simple-maps + d3-scale choropleth
+  - Recharts historical trends
+  - localStorage watchlist and preferences
+  - static county index for global county search
+  - offline snapshot fallback
+
+Backend: FastAPI + SQLite
+  - EIA API ingest for weekly historical data
+  - AAA scraper for daily state averages
+  - on-demand AAA metro/county caching per state
+  - APScheduler startup + daily refresh
+  - health endpoint for provider status
 ```
 
 - **SQLite** as the storage layer: the backend is single-user and local, so a
-  zero-config single-file database is the right-sized choice
+  zero-config single-file database is the right-sized choice.
 - **On-demand scraping with a 24h cache**: metro/county data for a state is
-  fetched only when someone actually views that state — one or two requests
-  per state per day, far below AAA's `Crawl-delay: 10` robots.txt policy
+  fetched only when someone views or searches into that state, keeping request
+  volume low.
 - **Fail-safe ingestion**: parsers refuse to write when page structure looks
-  wrong (state/county count fuses), and every scrape failure falls back to
-  the last good data instead of breaking the API
+  wrong, and scrape failures fall back to the last good data instead of breaking
+  the API.
 
-## Data sources & scraping ethics
+## Data Sources & Scraping Ethics
 
-- [EIA Open Data](https://www.eia.gov/opendata/) — official weekly retail
-  gasoline/diesel prices (free API key)
-- [AAA Gas Prices](https://gasprices.aaa.com/) — daily state / metro / county
-  averages. Scraped in accordance with the site's `robots.txt`
-  (crawling allowed, `Crawl-delay: 10` respected with wide margin), with an
-  identified User-Agent, minimal request volume, and structure-change fuses.
+- [EIA Open Data](https://www.eia.gov/opendata/) - official weekly retail
+  gasoline/diesel prices with a free API key.
+- [AAA Gas Prices](https://gasprices.aaa.com/) - daily state / metro / county
+  averages. Scraped with an identifying User-Agent, minimal request volume,
+  24h per-state caching for metro/county pages, and structure-change fuses.
   County data is regular-grade only because that is all AAA publishes at that
-  granularity — the UI hides the county layer for other grades rather than
-  estimating values.
+  granularity.
 
-## Running locally
+## Running Locally
 
 Backend (Windows PowerShell):
 
@@ -96,7 +108,16 @@ Then start both with one command from the project root:
 .\dev.ps1
 ```
 
-Frontend: http://localhost:5173 · API docs: http://localhost:8000/docs
+Frontend: http://localhost:5173  
+API docs: http://localhost:8000/docs
+
+## Data Refresh
+
+- `.\dev.ps1` starts the backend and frontend.
+- `backend\start.ps1` runs an incremental EIA update before starting the API.
+- The FastAPI app also runs background ingest on startup and daily at 09:30.
+- AAA state averages refresh through the backend startup/daily ingest.
+- Metro and county data are fetched per state on demand and cached.
 
 ## API
 
@@ -104,14 +125,16 @@ Frontend: http://localhost:5173 · API docs: http://localhost:8000/docs
 |---|---|
 | `GET /api/health` | liveness + ingest status for both providers |
 | `GET /api/prices/latest?product=` | all 50 states, AAA-first with EIA fallback, with deltas |
-| `GET /api/prices/history?weeks=&product=` | national weekly series (EIA) |
-| `GET /api/prices/state/{abbr}?weeks=&product=` | state series, PADD fallback flagged |
-| `GET /api/prices/metros/{abbr}?product=` | metro averages (AAA, on-demand cached) |
-| `GET /api/prices/counties/{abbr}` | county averages, regular only (AAA) |
-| `GET /api/prices/cities?product=` | EIA metro series (~10 cities) |
+| `GET /api/prices/history?weeks=&product=` | national weekly series from EIA |
+| `GET /api/prices/state/{abbr}?weeks=&product=` | state series, with PADD fallback flagged |
+| `GET /api/prices/metros/{abbr}?product=` | metro averages from AAA, on-demand cached |
+| `GET /api/prices/counties/{abbr}` | county averages from AAA, regular only |
+| `GET /api/prices/cities?product=` | EIA metro series for covered cities |
 
 ## Roadmap
 
-- Persist AAA daily history for county/metro trend lines
-- pytest suite + GitHub Actions CI
-- Station-level layer for one metro area (evaluating TomTom/HERE free tiers)
+- Persist AAA daily history for county/metro trend lines.
+- Add pytest coverage for parser fuses, API contracts, and fallback behavior.
+- Add GitHub Actions for frontend build/lint and backend tests.
+- Add URL state sharing for selected state, product, range, and comparisons.
+- Evaluate a station-level layer for one metro area.
